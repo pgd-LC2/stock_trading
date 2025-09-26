@@ -74,16 +74,32 @@ class StockDataPreprocessor:
         
         df['momentum_5'] = df['close'] / df['close'].shift(5) - 1
         df['momentum_10'] = df['close'] / df['close'].shift(10) - 1
-        df['trend_strength'] = df['close'].rolling(window=20).apply(lambda x: np.polyfit(range(len(x)), x, 1)[0])
+        df['momentum_20'] = df['close'] / df['close'].shift(20) - 1
+        
+        df['trend_strength'] = df['close'].rolling(window=20).apply(lambda x: np.polyfit(range(len(x)), x, 1)[0] if len(x) == 20 else 0)
+        df['trend_acceleration'] = df['trend_strength'] - df['trend_strength'].shift(5)
+        
         df['price_position'] = (df['close'] - df['close'].rolling(window=20).min()) / (df['close'].rolling(window=20).max() - df['close'].rolling(window=20).min())
         
         df['volume_price_correlation'] = df['volume'].rolling(window=10).corr(df['close'])
         df['volume_trend'] = df['volume'] / df['volume'].rolling(window=10).mean()
+        df['volume_momentum'] = df['volume'] / df['volume'].shift(5) - 1
         
         df['resistance_level'] = df['high'].rolling(window=20).max()
         df['support_level'] = df['low'].rolling(window=20).min()
         df['price_vs_resistance'] = df['close'] / df['resistance_level']
         df['price_vs_support'] = df['close'] / df['support_level']
+        
+        df['price_direction_5'] = np.where(df['close'] > df['close'].shift(5), 1, -1)
+        df['price_direction_10'] = np.where(df['close'] > df['close'].shift(10), 1, -1)
+        df['volume_direction'] = np.where(df['volume'] > df['volume'].shift(1), 1, -1)
+        
+        df['sma_5_20_cross'] = np.where(df['sma_5'] > df['sma_20'], 1, -1)
+        df['sma_10_20_cross'] = np.where(df['sma_10'] > df['sma_20'], 1, -1)
+        df['ema_12_26_cross'] = np.where(df['ema_12'] > df['ema_26'], 1, -1)
+        
+        df['volatility_regime'] = np.where(df['volatility_20'] > df['volatility_20'].rolling(window=50).mean(), 1, -1)
+        df['volume_regime'] = np.where(df['volume'] > df['volume'].rolling(window=50).mean(), 1, -1)
         
         logger.info("Price features added successfully")
         return df
