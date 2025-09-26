@@ -122,14 +122,14 @@ def train_models(data: pd.DataFrame, config: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("开始数据预处理和模型训练...")
     
     try:
-        X_train, y_train, X_val, y_val, X_test, y_test = preprocess_stock_data(data, config)
+        X_train, y_train, X_val, y_val, X_test, y_test, preprocessor = preprocess_stock_data(data, config)
         
         logger.info(f"数据预处理完成:")
         logger.info(f"  训练集: {X_train.shape}")
         logger.info(f"  验证集: {X_val.shape}")
         logger.info(f"  测试集: {X_test.shape}")
         
-        results = train_stock_models(X_train, y_train, X_val, y_val, X_test, y_test)
+        results = train_stock_models(X_train, y_train, X_val, y_val, X_test, y_test, preprocessor)
         
         logger.info("模型训练完成")
         
