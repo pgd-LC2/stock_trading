@@ -98,7 +98,11 @@ class StockPredictor:
                 batch_tensor = torch.FloatTensor(batch).to(self.device)
                 
                 outputs = model(batch_tensor)
-                predictions.extend(outputs.squeeze().cpu().numpy())
+                output_numpy = outputs.squeeze().cpu().numpy()
+                if np.isscalar(output_numpy) or len(output_numpy.shape) == 0:
+                    predictions.append(output_numpy.item() if hasattr(output_numpy, 'item') else output_numpy)
+                else:
+                    predictions.extend(output_numpy)
         
         return np.array(predictions)
     
@@ -149,7 +153,12 @@ class StockPredictor:
             future_pred = {}
             for model_name in self.models.keys():
                 model_pred = self.predict_single_model(model_name, current_sequence)
-                future_pred[model_name] = model_pred[0]
+                if np.isscalar(model_pred):
+                    future_pred[model_name] = model_pred
+                elif len(model_pred.shape) == 0:
+                    future_pred[model_name] = model_pred.item()
+                else:
+                    future_pred[model_name] = model_pred[0]
             
             ensemble_pred = np.mean(list(future_pred.values()))
             future_predictions.append(ensemble_pred)
@@ -223,7 +232,12 @@ def predict_stock_prices(
     
     predictor = create_predictor(config_path, models_dir)
     
-    input_dim = len(predictor.config['data']['features'])
+    if predictor.preprocessor is None:
+        predictor.preprocessor = StockDataPreprocessor()
+    
+    processed_data = predictor.preprocessor.prepare_features(data)
+    input_dim = len(predictor.preprocessor.feature_columns)
+    
     predictor.load_models(input_dim)
     
     return predictor.predict_future_prices(data, days_ahead)

@@ -1,5 +1,6 @@
 data:
   sources:
+    - tushare
     - yahoo_finance
     - alpha_vantage
   symbols:
@@ -74,3 +75,7 @@ paths:
   models_dir: ./models
   logs_dir: ./logs
   results_dir: ./results
+
+api_keys:
+  tushare_token: '3bfd74dfdcb21818ca1a765234144cf13f0f359988362c1e3bfbefc5'
+  alpha_vantage_key: ''

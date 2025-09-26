@@ -65,13 +65,45 @@ def download_data(config: Dict[str, Any]) -> pd.DataFrame:
     
     symbols = config['data']['symbols']
     period = config['data']['period']
+    source = config['data'].get('source', 'yahoo')
+    
+    tushare_token = config.get('api_keys', {}).get('tushare_token', '')
+    alpha_vantage_key = config.get('api_keys', {}).get('alpha_vantage_key', '')
     
     try:
-        data = get_stock_data(symbols, period=period)
+        logger.info(f"使用数据源: {source}")
+        
+        data = get_stock_data(
+            symbols, 
+            period=period, 
+            source=source,
+            tushare_token=tushare_token,
+            alpha_vantage_key=alpha_vantage_key
+        )
         
         if data.empty:
             logger.error("未能获取到股票数据")
-            sys.exit(1)
+            logger.info("尝试使用备用数据源...")
+            
+            backup_sources = ['tushare', 'yahoo', 'alpha_vantage']
+            backup_sources = [s for s in backup_sources if s != source]
+            
+            for backup_source in backup_sources:
+                logger.info(f"尝试备用数据源: {backup_source}")
+                data = get_stock_data(
+                    symbols, 
+                    period=period, 
+                    source=backup_source,
+                    tushare_token=tushare_token,
+                    alpha_vantage_key=alpha_vantage_key
+                )
+                if not data.empty:
+                    logger.info(f"成功使用备用数据源 {backup_source} 获取数据")
+                    break
+            
+            if data.empty:
+                logger.error("所有数据源都无法获取数据")
+                sys.exit(1)
         
         data_path = os.path.join(config['paths']['data_dir'], 'stock_data.csv')
         data.to_csv(data_path)
@@ -179,7 +211,7 @@ def main():
     """主函数"""
     parser = argparse.ArgumentParser(description='股票预测系统')
     parser.add_argument('--config', default='config.yaml', help='配置文件路径')
-    parser.add_argument('--mode', choices=['train', 'predict', 'evaluate', 'all'], 
+    parser.add_argument('--mode', choices=['train', 'predict', 'evaluate', 'all', 'demo'], 
                        default='all', help='运行模式')
     parser.add_argument('--symbols', nargs='+', help='股票代码列表')
     parser.add_argument('--days', type=int, default=5, help='预测天数')
@@ -197,6 +229,10 @@ def main():
     
     if args.symbols:
         config['data']['symbols'] = args.symbols
+    
+    if args.mode == 'demo':
+        print("🚀 运行演示模式 - 完整股票预测流程")
+        args.mode = 'all'  # demo模式等同于all模式
     
     if args.data_file and os.path.exists(args.data_file):
         logger.info(f"使用现有数据文件: {args.data_file}")
