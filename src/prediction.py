@@ -223,7 +223,12 @@ def predict_stock_prices(
     
     predictor = create_predictor(config_path, models_dir)
     
-    input_dim = len(predictor.config['data']['features'])
+    if predictor.preprocessor is None:
+        predictor.preprocessor = StockDataPreprocessor()
+    
+    processed_data = predictor.preprocessor.prepare_features(data)
+    input_dim = len(predictor.preprocessor.feature_columns)
+    
     predictor.load_models(input_dim)
     
     return predictor.predict_future_prices(data, days_ahead)
