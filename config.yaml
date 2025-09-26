@@ -1,0 +1,76 @@
+data:
+  sources:
+    - yahoo_finance
+    - alpha_vantage
+  symbols:
+    - AAPL
+    - TSLA
+    - GOOGL
+    - MSFT
+    - AMZN
+  timeframe: 1d
+  period: 5y
+  features:
+    - open
+    - high
+    - low
+    - close
+    - volume
+    - rsi
+    - macd
+    - bollinger_bands
+    - sma_20
+    - ema_12
+
+models:
+  haelt:
+    sequence_length: 60
+    hidden_dim: 128
+    num_layers: 3
+    dropout: 0.2
+    learning_rate: 0.001
+    batch_size: 32
+    epochs: 100
+  
+  lstm:
+    sequence_length: 60
+    hidden_dim: 64
+    num_layers: 2
+    dropout: 0.2
+    learning_rate: 0.001
+    batch_size: 32
+    epochs: 50
+  
+  transformer:
+    sequence_length: 60
+    d_model: 128
+    nhead: 8
+    num_layers: 6
+    dropout: 0.1
+    learning_rate: 0.0001
+    batch_size: 16
+    epochs: 80
+
+training:
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  early_stopping_patience: 10
+  reduce_lr_patience: 5
+  min_lr: 1e-6
+
+evaluation:
+  metrics:
+    - mse
+    - mae
+    - rmse
+    - directional_accuracy
+    - sharpe_ratio
+    - max_drawdown
+    - hit_rate
+  
+paths:
+  data_dir: ./data
+  models_dir: ./models
+  logs_dir: ./logs
+  results_dir: ./results
