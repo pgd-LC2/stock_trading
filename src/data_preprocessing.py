@@ -47,7 +47,7 @@ class StockDataPreprocessor:
             
             df['williams_r'] = ta.momentum.WilliamsRIndicator(high=df['high'], low=df['low'], close=df['close']).williams_r()
             
-            df['volume_sma'] = ta.volume.VolumeSMAIndicator(close=df['close'], volume=df['volume']).volume_sma()
+            df['volume_sma'] = df['volume'].rolling(window=20).mean()
             
             logger.info("Technical indicators calculated successfully")
             
@@ -71,6 +71,19 @@ class StockDataPreprocessor:
         for window in [5, 10, 20]:
             df[f'volatility_{window}'] = df['price_change'].rolling(window=window).std()
             df[f'return_{window}'] = df['close'].pct_change(periods=window)
+        
+        df['momentum_5'] = df['close'] / df['close'].shift(5) - 1
+        df['momentum_10'] = df['close'] / df['close'].shift(10) - 1
+        df['trend_strength'] = df['close'].rolling(window=20).apply(lambda x: np.polyfit(range(len(x)), x, 1)[0])
+        df['price_position'] = (df['close'] - df['close'].rolling(window=20).min()) / (df['close'].rolling(window=20).max() - df['close'].rolling(window=20).min())
+        
+        df['volume_price_correlation'] = df['volume'].rolling(window=10).corr(df['close'])
+        df['volume_trend'] = df['volume'] / df['volume'].rolling(window=10).mean()
+        
+        df['resistance_level'] = df['high'].rolling(window=20).max()
+        df['support_level'] = df['low'].rolling(window=20).min()
+        df['price_vs_resistance'] = df['close'] / df['resistance_level']
+        df['price_vs_support'] = df['close'] / df['support_level']
         
         logger.info("Price features added successfully")
         return df
@@ -98,7 +111,8 @@ class StockDataPreprocessor:
             logger.warning(f"Data length {len(data)} is less than sequence length {sequence_length}")
             return np.array([]), np.array([])
         
-        feature_data = data[self.feature_columns].values
+        feature_cols = [col for col in self.feature_columns if col != target_column]
+        feature_data = data[feature_cols].values
         target_data = data[target_column].values
         
         X, y = [], []
@@ -125,39 +139,63 @@ class StockDataPreprocessor:
             self.feature_columns = available_features
         else:
             numeric_columns = df.select_dtypes(include=[np.number]).columns
-            self.feature_columns = [col for col in numeric_columns if col not in ['symbol']]
+            original_columns = [col for col in numeric_columns if not col.endswith('_filtered') and col not in ['symbol']]
+            self.feature_columns = original_columns
         
         logger.info(f"Selected {len(self.feature_columns)} features for training")
         return df
     
     def scale_features(self, train_data: pd.DataFrame, val_data: pd.DataFrame = None, test_data: pd.DataFrame = None) -> Tuple[pd.DataFrame, ...]:
         if self.scaler_type == "minmax":
-            scaler = MinMaxScaler()
+            feature_scaler = MinMaxScaler()
+            target_scaler = MinMaxScaler()
         elif self.scaler_type == "standard":
-            scaler = StandardScaler()
+            feature_scaler = StandardScaler()
+            target_scaler = StandardScaler()
         else:
             logger.warning(f"Unknown scaler type {self.scaler_type}, using MinMaxScaler")
-            scaler = MinMaxScaler()
+            feature_scaler = MinMaxScaler()
+            target_scaler = MinMaxScaler()
+        
+        feature_cols = [col for col in self.feature_columns if col != 'close']
         
         train_scaled = train_data.copy()
-        train_scaled[self.feature_columns] = scaler.fit_transform(train_data[self.feature_columns])
+        train_scaled[feature_cols] = feature_scaler.fit_transform(train_data[feature_cols])
         
-        self.scalers['features'] = scaler
+        if 'close' in train_data.columns:
+            train_scaled[['close']] = target_scaler.fit_transform(train_data[['close']])
+        
+        self.scalers['features'] = feature_scaler
+        self.scalers['target'] = target_scaler
         
         results = [train_scaled]
         
         if val_data is not None:
             val_scaled = val_data.copy()
-            val_scaled[self.feature_columns] = scaler.transform(val_data[self.feature_columns])
+            val_scaled[feature_cols] = feature_scaler.transform(val_data[feature_cols])
+            if 'close' in val_data.columns:
+                val_scaled[['close']] = target_scaler.transform(val_data[['close']])
             results.append(val_scaled)
         
         if test_data is not None:
             test_scaled = test_data.copy()
-            test_scaled[self.feature_columns] = scaler.transform(test_data[self.feature_columns])
+            test_scaled[feature_cols] = feature_scaler.transform(test_data[feature_cols])
+            if 'close' in test_data.columns:
+                test_scaled[['close']] = target_scaler.transform(test_data[['close']])
             results.append(test_scaled)
         
-        logger.info("Feature scaling completed")
+        logger.info("Feature and target scaling completed")
         return tuple(results)
+    
+    def inverse_transform_target(self, scaled_predictions: np.ndarray) -> np.ndarray:
+        """Convert scaled predictions back to original price range"""
+        if 'target' not in self.scalers:
+            logger.warning("Target scaler not found, returning predictions as-is")
+            return scaled_predictions
+        
+        predictions_2d = scaled_predictions.reshape(-1, 1)
+        real_predictions = self.scalers['target'].inverse_transform(predictions_2d)
+        return real_predictions.flatten()
     
     def split_data(self, data: pd.DataFrame, train_ratio: float = 0.7, val_ratio: float = 0.15) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         data_sorted = data.sort_index()
@@ -174,7 +212,7 @@ class StockDataPreprocessor:
         
         return train_data, val_data, test_data
 
-def preprocess_stock_data(data: pd.DataFrame, config: Dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def preprocess_stock_data(data: pd.DataFrame, config: Dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, StockDataPreprocessor]:
     preprocessor = StockDataPreprocessor()
     
     processed_data = preprocessor.prepare_features(data)
@@ -193,4 +231,4 @@ def preprocess_stock_data(data: pd.DataFrame, config: Dict) -> Tuple[np.ndarray,
     X_val, y_val = preprocessor.create_sequences(val_scaled, sequence_length)
     X_test, y_test = preprocessor.create_sequences(test_scaled, sequence_length)
     
-    return X_train, y_train, X_val, y_val, X_test, y_test
+    return X_train, y_train, X_val, y_val, X_test, y_test, preprocessor

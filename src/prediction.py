@@ -61,11 +61,31 @@ class StockPredictor:
         
         self.ensemble = EnsembleModel(self.models)
     
-    def prepare_data_for_prediction(self, data: pd.DataFrame) -> np.ndarray:
+    def prepare_data_for_prediction(self, data: pd.DataFrame) -> Tuple[np.ndarray, 'StockDataPreprocessor']:
         if self.preprocessor is None:
             self.preprocessor = StockDataPreprocessor()
         
+        import pickle
+        import os
+        scaler_path = os.path.join(self.models_dir, 'scalers.pkl')
+        if os.path.exists(scaler_path):
+            with open(scaler_path, 'rb') as f:
+                saved_scalers = pickle.load(f)
+                self.preprocessor.scalers = {k: v for k, v in saved_scalers.items() if k != 'feature_columns'}
+                if 'feature_columns' in saved_scalers:
+                    self.preprocessor.feature_columns = saved_scalers['feature_columns']
+                logger.info(f"Loaded scalers: {list(self.preprocessor.scalers.keys())}")
+        else:
+            logger.warning(f"Scaler file not found: {scaler_path}")
+        
         processed_data = self.preprocessor.prepare_features(data)
+        
+        if hasattr(self.preprocessor, 'feature_columns') and self.preprocessor.feature_columns:
+            available_features = [col for col in self.preprocessor.feature_columns if col in processed_data.columns]
+            if len(available_features) != len(self.preprocessor.feature_columns):
+                missing_features = set(self.preprocessor.feature_columns) - set(available_features)
+                logger.warning(f"Missing features during prediction: {missing_features}")
+            self.preprocessor.feature_columns = available_features
         
         if len(self.preprocessor.feature_columns) == 0:
             raise ValueError("No feature columns available for prediction")
@@ -75,13 +95,17 @@ class StockPredictor:
         if len(processed_data) < sequence_length:
             raise ValueError(f"Data length {len(processed_data)} is less than required sequence length {sequence_length}")
         
-        feature_data = processed_data[self.preprocessor.feature_columns].values
+        feature_cols = [col for col in self.preprocessor.feature_columns if col != 'close']
+        if 'features' in self.preprocessor.scalers:
+            processed_data[feature_cols] = self.preprocessor.scalers['features'].transform(processed_data[feature_cols])
+        
+        feature_data = processed_data[feature_cols].values
         
         X = []
         for i in range(sequence_length, len(feature_data)):
             X.append(feature_data[i-sequence_length:i])
         
-        return np.array(X)
+        return np.array(X), self.preprocessor
     
     def predict_single_model(self, model_name: str, X: np.ndarray) -> np.ndarray:
         if model_name not in self.models:
@@ -137,12 +161,16 @@ class StockPredictor:
         return np.array(trend_directions)
     
     def predict_future_prices(self, data: pd.DataFrame, days_ahead: int = 5) -> Dict[str, Any]:
-        X = self.prepare_data_for_prediction(data)
+        X, preprocessor = self.prepare_data_for_prediction(data)
         
         if len(X) == 0:
             raise ValueError("No valid sequences for prediction")
         
         predictions = self.predict_ensemble(X)
+        
+        # Apply inverse transformation to historical predictions
+        for model_name in predictions:
+            predictions[model_name] = preprocessor.inverse_transform_target(predictions[model_name])
         
         last_sequence = X[-1:]
         future_predictions = []
@@ -161,10 +189,11 @@ class StockPredictor:
                     future_pred[model_name] = model_pred[0]
             
             ensemble_pred = np.mean(list(future_pred.values()))
-            future_predictions.append(ensemble_pred)
+            
+            real_price = preprocessor.inverse_transform_target(np.array([ensemble_pred]))[0]
+            future_predictions.append(real_price)
             
             new_features = current_sequence[0, -1, :].copy()
-            new_features[0] = ensemble_pred
             
             current_sequence = np.roll(current_sequence, -1, axis=1)
             current_sequence[0, -1, :] = new_features
@@ -236,7 +265,7 @@ def predict_stock_prices(
         predictor.preprocessor = StockDataPreprocessor()
     
     processed_data = predictor.preprocessor.prepare_features(data)
-    input_dim = len(predictor.preprocessor.feature_columns)
+    input_dim = len([col for col in predictor.preprocessor.feature_columns if col != 'close'])
     
     predictor.load_models(input_dim)
     

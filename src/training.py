@@ -135,6 +135,17 @@ class TrainingManager:
             model_path = os.path.join(self.config['paths']['models_dir'], f'{model_name}_final.pth')
             torch.save(model.state_dict(), model_path)
         
+        if 'preprocessor' in results:
+            import pickle
+            scaler_path = os.path.join(self.config['paths']['models_dir'], 'scalers.pkl')
+            scalers_to_save = results['preprocessor'].scalers.copy()
+            scalers_to_save['feature_columns'] = results['preprocessor'].feature_columns
+            with open(scaler_path, 'wb') as f:
+                pickle.dump(scalers_to_save, f)
+            logger.info(f"Scalers saved to {scaler_path}")
+        else:
+            logger.warning("No preprocessor found in results, scalers not saved")
+        
         logger.info(f"Results saved to {results_path}")
 
 def train_stock_models(
@@ -144,10 +155,15 @@ def train_stock_models(
     y_val: np.ndarray,
     X_test: np.ndarray,
     y_test: np.ndarray,
+    preprocessor=None,
     config_path: str = "config.yaml"
 ) -> Dict[str, Any]:
     
     trainer = TrainingManager(config_path)
     results = trainer.train_models(X_train, y_train, X_val, y_val, X_test, y_test)
+    
+    if preprocessor is not None:
+        results['preprocessor'] = preprocessor
+        trainer.save_results(results)
     
     return results
