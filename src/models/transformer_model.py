@@ -87,7 +87,7 @@ class TransformerModel(nn.Module):
         return output
 
 class DirectionalLoss(nn.Module):
-    def __init__(self, price_weight=0.7, direction_weight=0.3):
+    def __init__(self, price_weight=0.5, direction_weight=0.5):
         super(DirectionalLoss, self).__init__()
         self.price_weight = price_weight
         self.direction_weight = direction_weight
@@ -101,10 +101,18 @@ class DirectionalLoss(nn.Module):
             true_directions = torch.sign(targets[1:] - targets[:-1])
             
             direction_loss = 1.0 - torch.mean((pred_directions == true_directions).float())
+            
+            pred_momentum = predictions[1:] - predictions[:-1]
+            target_momentum = targets[1:] - targets[:-1]
+            momentum_alignment = torch.mean(torch.sign(pred_momentum * target_momentum))
+            momentum_loss = 1.0 - torch.clamp(momentum_alignment, 0.0, 1.0)
+            
+            total_loss = (self.price_weight * price_loss + 
+                         self.direction_weight * direction_loss +
+                         0.2 * momentum_loss)
         else:
-            direction_loss = torch.tensor(0.0, device=predictions.device)
+            total_loss = price_loss
         
-        total_loss = self.price_weight * price_loss + self.direction_weight * direction_loss
         return total_loss
 
 class TransformerTrainer:

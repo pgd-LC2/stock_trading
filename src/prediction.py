@@ -195,6 +195,14 @@ class StockPredictor:
             
             new_features = current_sequence[0, -1, :].copy()
             
+            if len(future_predictions) >= 2:
+                recent_change = (real_price - future_predictions[-2]) / future_predictions[-2]
+                feature_noise = np.random.normal(0, 0.001, size=new_features.shape)
+                new_features = new_features + feature_noise
+                
+                if len(new_features) > 0:
+                    new_features[0] = recent_change
+            
             current_sequence = np.roll(current_sequence, -1, axis=1)
             current_sequence[0, -1, :] = new_features
         
