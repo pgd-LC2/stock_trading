@@ -101,6 +101,26 @@ class StockDataPreprocessor:
         df['volatility_regime'] = np.where(df['volatility_20'] > df['volatility_20'].rolling(window=50).mean(), 1, -1)
         df['volume_regime'] = np.where(df['volume'] > df['volume'].rolling(window=50).mean(), 1, -1)
         
+        df['price_acceleration'] = df['close'].diff().diff()
+        df['volume_acceleration'] = df['volume'].diff().diff()
+        
+        for window in [3, 7, 14]:
+            df[f'trend_consistency_{window}'] = df['close'].rolling(window=window).apply(
+                lambda x: 1 if len(x) == window and (x.iloc[-1] > x.iloc[0] and all(x.diff().dropna() >= 0)) else 
+                         -1 if len(x) == window and (x.iloc[-1] < x.iloc[0] and all(x.diff().dropna() <= 0)) else 0
+            )
+        
+        df['momentum_strength'] = abs(df['momentum_5']) + abs(df['momentum_10']) + abs(df['momentum_20'])
+        
+        df['vol_adjusted_return_5'] = df['return_5'] / (df['volatility_5'] + 1e-8)
+        df['vol_adjusted_return_10'] = df['return_10'] / (df['volatility_10'] + 1e-8)
+        
+        df['resistance_breakout'] = np.where(df['close'] > df['resistance_level'] * 1.02, 1, 0)
+        df['support_breakdown'] = np.where(df['close'] < df['support_level'] * 0.98, -1, 0)
+        
+        df['volume_confirmed_up'] = np.where((df['price_change'] > 0) & (df['volume'] > df['volume_sma']), 1, 0)
+        df['volume_confirmed_down'] = np.where((df['price_change'] < 0) & (df['volume'] > df['volume_sma']), -1, 0)
+        
         logger.info("Price features added successfully")
         return df
     
