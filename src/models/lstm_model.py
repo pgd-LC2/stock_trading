@@ -52,11 +52,32 @@ class LSTMModel(nn.Module):
         
         return output
 
+class DirectionalLoss(nn.Module):
+    def __init__(self, price_weight=0.7, direction_weight=0.3):
+        super(DirectionalLoss, self).__init__()
+        self.price_weight = price_weight
+        self.direction_weight = direction_weight
+        self.mse_loss = nn.MSELoss()
+        
+    def forward(self, predictions, targets):
+        price_loss = self.mse_loss(predictions, targets)
+        
+        if len(predictions) > 1 and len(targets) > 1:
+            pred_directions = torch.sign(predictions[1:] - predictions[:-1])
+            true_directions = torch.sign(targets[1:] - targets[:-1])
+            
+            direction_loss = 1.0 - torch.mean((pred_directions == true_directions).float())
+        else:
+            direction_loss = torch.tensor(0.0, device=predictions.device)
+        
+        total_loss = self.price_weight * price_loss + self.direction_weight * direction_loss
+        return total_loss
+
 class LSTMTrainer:
     def __init__(self, model: LSTMModel, device: torch.device):
         self.model = model.to(device)
         self.device = device
-        self.criterion = nn.MSELoss()
+        self.criterion = DirectionalLoss()
         self.optimizer = None
         self.scheduler = None
         

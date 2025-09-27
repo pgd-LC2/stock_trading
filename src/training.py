@@ -106,12 +106,13 @@ class TrainingManager:
         
         ensemble = pipeline.create_ensemble(validation_scores)
         
-        ensemble_predictions, test_actuals = ensemble.predict(test_loader)
+        all_predictions, test_actuals = ensemble.predict_all(test_loader)
         
         results = {
             'training_results': training_results,
             'validation_scores': validation_scores,
-            'ensemble_predictions': ensemble_predictions,
+            'all_predictions': all_predictions,
+            'ensemble_predictions': all_predictions['ensemble'],
             'test_actuals': test_actuals,
             'models': pipeline.models,
             'ensemble': ensemble

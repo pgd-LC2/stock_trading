@@ -146,14 +146,14 @@ def evaluate_models(results: Dict[str, Any], config: Dict[str, Any]) -> None:
     try:
         y_true = results['test_actuals']
         
-        predictions_dict = {}
-        
-        for model_name in ['haelt', 'lstm', 'transformer']:
-            if model_name in results['models']:
-                model = results['models'][model_name]
-                predictions_dict[model_name] = results['ensemble_predictions']
-        
-        predictions_dict['ensemble'] = results['ensemble_predictions']
+        if 'all_predictions' in results:
+            predictions_dict = results['all_predictions']
+        else:
+            predictions_dict = {}
+            for model_name in ['haelt', 'lstm', 'transformer']:
+                if model_name in results['models']:
+                    predictions_dict[model_name] = results['ensemble_predictions']
+            predictions_dict['ensemble'] = results['ensemble_predictions']
         
         evaluation_results = evaluate_predictions(
             y_true,

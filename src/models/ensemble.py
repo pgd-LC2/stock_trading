@@ -51,6 +51,40 @@ class EnsembleModel:
         logger.info(f"Ensemble prediction completed with {len(self.models)} models")
         return ensemble_predictions, actuals
     
+    def predict_all(self, test_loader) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
+        """Return both individual model predictions and ensemble predictions"""
+        all_predictions = {}
+        actuals = None
+        
+        for name, model in self.models.items():
+            model.eval()
+            predictions = []
+            batch_actuals = []
+            
+            with torch.no_grad():
+                for batch_x, batch_y in test_loader:
+                    batch_x = batch_x.to(self.device).float()
+                    batch_y = batch_y.to(self.device).float()
+                    
+                    outputs = model(batch_x)
+                    
+                    predictions.extend(outputs.squeeze().cpu().numpy())
+                    batch_actuals.extend(batch_y.cpu().numpy())
+            
+            all_predictions[name] = np.array(predictions)
+            if actuals is None:
+                actuals = np.array(batch_actuals)
+        
+        ensemble_predictions = np.zeros_like(list(all_predictions.values())[0])
+        
+        for name, predictions in all_predictions.items():
+            ensemble_predictions += self.weights[name] * predictions
+        
+        all_predictions['ensemble'] = ensemble_predictions
+        
+        logger.info(f"Ensemble prediction completed with {len(self.models)} models")
+        return all_predictions, actuals
+    
     def update_weights(self, validation_scores: Dict[str, float]):
         total_score = sum(validation_scores.values())
         if total_score > 0:
